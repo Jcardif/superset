@@ -1,0 +1,297 @@
+---
+title: Installing Visualization Plugins
+hide_title: true
+sidebar_position: 7
+version: 1
+---
+
+# Installing Visualization Plugins
+
+Superset comes with many built-in visualization types, but you can extend it with additional visualization plugins. This guide covers how to use built-in plugins and install custom visualization plugins in production environments.
+
+## Overview
+
+Visualization plugins are JavaScript/TypeScript packages that need to be:
+1. Built and bundled with the Superset frontend
+2. Registered in the Superset application
+3. Deployed as part of your Superset installation
+
+## Using the Plotly Plugin
+
+:::note
+**Good news!** As of Superset 3.0+, the Plotly plugin is **included by default** in the standard Superset distribution. You don't need to install it separately - it's already available in your Superset instance.
+:::
+
+The Plotly plugin (`@superset-ui/plugin-chart-plotly`) provides interactive Plotly.js-based visualizations for Superset. It's pre-installed and registered in `MainPreset.js`, so you can use it immediately in any standard Superset deployment.
+
+### Accessing the Plotly Plugin
+
+To use the Plotly visualization in your Superset instance:
+
+1. **Log in** to your Superset instance
+2. **Create a new chart** or edit an existing one
+3. **Select "Plotly Chart"** from the visualization type selector
+4. The plugin should be available immediately in all deployment types (Docker, Kubernetes, from source)
+
+### Verifying Plotly is Available
+
+If you don't see the Plotly chart option, it may be disabled or your Superset version is older:
+
+1. Check your Superset version: `superset version` or check in the UI (click on the user menu → About)
+2. For Superset 3.0+, Plotly should be included by default
+3. For older versions, you may need to upgrade or manually install the plugin (see "Installing Custom Plugins" below)
+
+## Installing Custom Visualization Plugins
+
+If you want to install a custom or third-party visualization plugin that's not included by default, follow these instructions.
+
+### Prerequisites
+
+- A Superset installation (Docker, Kubernetes, or from source)
+- Node.js 16+ and npm 7+ (for building the frontend)
+- Access to modify the Superset frontend code and rebuild the image
+- The npm package name of the plugin you want to install (e.g., `your-custom-plugin`)
+
+### Method 1: Docker Compose Deployment
+
+For Docker Compose deployments, you'll need to customize the Docker image to include the plugin.
+
+#### Step 1: Create a Custom Dockerfile
+
+Create a file named `Dockerfile.custom` in your Superset directory:
+
+```dockerfile
+FROM apache/superset:latest
+
+USER root
+
+# Install your custom visualization plugin
+WORKDIR /app/superset-frontend
+RUN npm install your-custom-plugin-package
+
+# Copy the modified MainPreset.js
+COPY MainPreset.js /app/superset-frontend/src/visualizations/presets/MainPreset.js
+
+# Rebuild the frontend with the new plugin
+RUN npm run build
+
+USER superset
+```
+
+#### Step 2: Modify MainPreset.js
+
+Create a modified `MainPreset.js` file that includes your custom plugin. You'll need to:
+
+1. Add an import statement for your plugin at the top of the file
+2. Add your plugin to the `plugins` array in the constructor
+
+Example:
+
+```javascript
+// At the top of the file, add:
+import { YourCustomPlugin } from 'your-custom-plugin-package';
+
+// In the plugins array (around line 100+), add:
+new YourCustomPlugin().configure({ key: 'your-plugin-key' }),
+```
+
+:::tip
+You can find the original `MainPreset.js` file in the Superset repository at:
+`superset-frontend/src/visualizations/presets/MainPreset.js`
+
+Copy this file, add your plugin import and configuration, and place it in the same directory as your Dockerfile.
+:::
+
+#### Step 3: Build and Deploy
+
+Update your `docker-compose.yml` to use the custom Dockerfile:
+
+```yaml
+version: '3.8'
+services:
+  superset:
+    build:
+      context: .
+      dockerfile: Dockerfile.custom
+    # ... rest of your configuration
+```
+
+Then rebuild and restart:
+
+```bash
+docker compose build --no-cache
+docker compose up -d
+```
+
+### Method 2: Kubernetes/Helm Deployment
+
+For Kubernetes deployments using the Helm chart, you need to build a custom Docker image with the plugin.
+
+#### Step 1: Create a Custom Docker Image
+
+Create a `Dockerfile` that extends the official Superset image:
+
+```dockerfile
+FROM apache/superset:3.1.1
+
+USER root
+
+# Switch to the frontend directory
+WORKDIR /app/superset-frontend
+
+# Install your custom plugin
+RUN npm install your-custom-plugin-package
+
+# Copy the modified MainPreset.js that includes the plugin
+COPY MainPreset.js /app/superset-frontend/src/visualizations/presets/MainPreset.js
+
+# Rebuild the frontend assets
+RUN npm run build
+
+USER superset
+```
+
+#### Step 2: Modify MainPreset.js
+
+Create a modified `MainPreset.js` file with the plugin imported. Follow the same steps as in Method 1, Step 2.
+
+#### Step 3: Build and Push the Custom Image
+
+```bash
+# Build the custom image
+docker build -t your-registry/superset-with-custom-plugin:3.1.1 .
+
+# Push to your container registry
+docker push your-registry/superset-with-custom-plugin:3.1.1
+```
+
+#### Step 4: Update Helm Values
+
+Update your `values.yaml` to use the custom image:
+
+```yaml
+image:
+  repository: your-registry/superset-with-custom-plugin
+  tag: 3.1.1
+  pullPolicy: IfNotPresent
+```
+
+#### Step 5: Deploy with Helm
+
+```bash
+helm upgrade --install superset superset/superset \
+  --values values.yaml
+```
+
+### Method 3: Installing from Source
+
+If you're running Superset from source, the installation is more straightforward.
+
+#### Step 1: Install the Plugin
+
+Navigate to the `superset-frontend` directory and install the plugin:
+
+```bash
+#### Step 1: Install the Plugin
+
+Navigate to the `superset-frontend` directory and install the plugin:
+
+```bash
+cd superset-frontend
+npm install your-custom-plugin-package
+```
+
+#### Step 2: Register the Plugin
+
+Edit `superset-frontend/src/visualizations/presets/MainPreset.js`:
+
+Add the import at the top:
+
+```javascript
+import { YourCustomPlugin } from 'your-custom-plugin-package';
+```
+
+Add the plugin to the plugins array:
+
+```javascript
+new YourCustomPlugin().configure({ key: 'your-plugin-key' }),
+```
+
+#### Step 3: Rebuild the Frontend
+
+```bash
+npm run build
+```
+
+Or for development:
+
+```bash
+npm run dev-server
+```
+
+## Built-in Plugins Available by Default
+
+Superset includes many visualization plugins out of the box. You don't need to install these - they're already available:
+
+### Chart Plugins
+- **Plotly Chart** (`@superset-ui/plugin-chart-plotly`) - Interactive Plotly.js visualizations
+- **ECharts plugins** - Area, Bar, Line, Pie, Gauge, Funnel, Sankey, Treemap, and more
+- **Big Number** - Display key metrics
+- **Table** - Tabular data visualization
+- **Pivot Table** - Multidimensional data analysis
+- **Word Cloud** - Text visualization
+- **Map visualizations** - MapBox, World Map, Country Map
+- **Deck.gl** - Geospatial visualizations
+- **Handlebars** - Custom HTML templates
+
+For a complete list, check the `MainPreset.js` file in your Superset installation.
+
+## Installing Other Visualization Plugins
+
+The same process applies to other third-party or custom visualization plugins not included by default.
+
+## Verifying Plugin Installation
+
+After deploying with a custom plugin:
+
+1. Log in to your Superset instance
+2. Create a new chart or edit an existing one
+3. You should see your plugin's name in the visualization type selector
+
+For Plotly (built-in), look for "Plotly Chart" in the chart type selector.
+
+## Troubleshooting
+
+### Plugin Not Appearing
+
+- **Check the frontend build**: Ensure the frontend was rebuilt after installing the plugin
+- **Check browser console**: Look for JavaScript errors that might prevent the plugin from loading
+- **Verify plugin registration**: Ensure the plugin is properly imported and added to the `MainPreset.js` file
+- **Clear browser cache**: Force refresh your browser (Ctrl+Shift+R or Cmd+Shift+R)
+
+### Build Failures
+
+- **Node version**: Ensure you're using Node.js 16 or later
+- **Memory issues**: Frontend builds can be memory-intensive. Increase Docker memory limits if needed
+- **Dependency conflicts**: Check for conflicting package versions with `npm ls`
+
+### Runtime Errors
+
+- Check the Superset backend logs: `docker logs superset_app` or `kubectl logs <superset-pod>`
+- Check the browser console for frontend errors
+- Ensure the plugin version is compatible with your Superset version
+
+## Best Practices
+
+1. **Version pinning**: Pin the plugin version in `package.json` to ensure consistent builds
+2. **CI/CD integration**: Automate the custom image building in your CI/CD pipeline
+3. **Testing**: Test the plugin in a development/staging environment before deploying to production
+4. **Documentation**: Keep a record of which plugins are installed and their versions
+5. **Image registry**: Store custom images in a private registry for production use
+
+## Additional Resources
+
+- [Creating Visualization Plugins](/docs/contributing/howtos#creating-visualization-plugins)
+- [Plotly Plugin GitHub Repository](https://github.com/apache/superset/tree/master/superset-frontend/plugins/plugin-chart-plotly)
+- [Superset Docker Documentation](https://hub.docker.com/r/apache/superset)
+- [Superset Helm Chart](https://github.com/apache/superset/tree/master/helm/superset)
